@@ -23,7 +23,10 @@ function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  const FIXED_MODEL = 'Qwen/Qwen2.5-1.5B-Instruct:featherless-ai';
+  const MODELS = [
+    'Qwen/Qwen2.5-72B-Instruct',
+    'mistralai/Mistral-7B-Instruct-v0.3',
+  ];
   const hfKey = import.meta.env.VITE_HF_TOKEN || '';
 
   const messagesEndRef = useRef(null);
@@ -47,20 +50,41 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // API
+  // API — tries each model, with retries for loading errors
   async function query(data) {
-    const response = await fetch(
-      "https://router.huggingface.co/v1/chat/completions",
-      {
-        headers: {
-          Authorization: `Bearer ${hfKey}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        body: JSON.stringify(data),
+    for (const model of MODELS) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetch(
+            "https://router.huggingface.co/v1/chat/completions",
+            {
+              headers: {
+                Authorization: `Bearer ${hfKey}`,
+                "Content-Type": "application/json",
+              },
+              method: "POST",
+              body: JSON.stringify({ ...data, model }),
+            }
+          );
+          const result = await response.json();
+
+          const errorMsg = result?.error?.message || result?.error || '';
+          const isLoading = typeof errorMsg === 'string' &&
+            (errorMsg.toLowerCase().includes('not ready') ||
+             errorMsg.toLowerCase().includes('loading'));
+
+          if (isLoading) {
+            await new Promise(r => setTimeout(r, 3000));
+            continue;
+          }
+          if (result?.error) break; // non-loading error, try next model
+          return result;
+        } catch {
+          break; // network error, try next model
+        }
       }
-    );
-    return await response.json();
+    }
+    return { error: { message: 'All models are currently unavailable. Please try again in a moment.' } };
   }
 
   async function generateImage(prompt) {
@@ -114,7 +138,7 @@ function App() {
         .filter(m => m.type === 'text')
         .map(m => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.content }));
 
-      const result = await query({ model: FIXED_MODEL, messages: apiMessages, max_tokens: 500 });
+      const result = await query({ messages: apiMessages, max_tokens: 500 });
       if (result.error) throw new Error(result.error.message || 'API Error');
 
       const botReply = result.choices[0].message.content;
