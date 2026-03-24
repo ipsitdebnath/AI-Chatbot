@@ -1,16 +1,53 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, AlertCircle, Sparkles } from 'lucide-react';
+import { Bot, AlertCircle, Sparkles, Plus, MessageSquare, Trash2, Sun, Moon, Menu, X } from 'lucide-react';
 
 function App() {
-  const [messages, setMessages] = useState([]);
+  // Theme
+  const [theme, setTheme] = useState(() => localStorage.getItem('chatTheme') || 'dark');
+
+  // Chat history: array of { id, title, messages }
+  const [chatHistory, setChatHistory] = useState(() => {
+    const saved = localStorage.getItem('chatHistory');
+    return saved ? JSON.parse(saved) : [{ id: Date.now(), title: 'New Chat', messages: [] }];
+  });
+  const [activeChatId, setActiveChatId] = useState(() => {
+    const saved = localStorage.getItem('chatHistory');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.length > 0 ? parsed[0].id : Date.now();
+    }
+    return Date.now();
+  });
+
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  // Hardcoded Model for Text
   const FIXED_MODEL = 'Qwen/Qwen2.5-1.5B-Instruct:featherless-ai';
   const hfKey = import.meta.env.VITE_HF_TOKEN || '';
 
-  // Part B & D: query function struct
+  const messagesEndRef = useRef(null);
+
+  // Get active chat
+  const activeChat = chatHistory.find(c => c.id === activeChatId) || chatHistory[0];
+  const messages = activeChat?.messages || [];
+
+  // Persist
+  useEffect(() => {
+    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('chatTheme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  // Scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  // API
   async function query(data) {
     const response = await fetch(
       "https://router.huggingface.co/v1/chat/completions",
@@ -23,11 +60,9 @@ function App() {
         body: JSON.stringify(data),
       }
     );
-    const result = await response.json();
-    return result;
+    return await response.json();
   }
 
-  // Part E: generateImage function struct
   async function generateImage(prompt) {
     const response = await fetch(
       "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
@@ -47,18 +82,16 @@ function App() {
     return await response.blob();
   }
 
-  const messagesEndRef = useRef(null);
+  const getTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping]);
-
-  const getTime = () => {
-    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const updateMessages = (chatId, newMessages) => {
+    setChatHistory(prev => prev.map(c =>
+      c.id === chatId
+        ? { ...c, messages: newMessages, title: c.title === 'New Chat' && newMessages.length > 0
+            ? newMessages.find(m => m.role === 'user')?.content.slice(0, 30) || c.title
+            : c.title }
+        : c
+    ));
   };
 
   const handleSendText = async (e) => {
@@ -71,39 +104,24 @@ function App() {
 
     const userMessage = { role: 'user', content: input, type: 'text', time: getTime() };
     const newMessages = [...messages, userMessage];
-    
-    setMessages(newMessages);
+
+    updateMessages(activeChatId, newMessages);
     setInput('');
     setIsTyping(true);
 
     try {
       const apiMessages = newMessages
         .filter(m => m.type === 'text')
-        .map(m => ({
-          role: m.role === 'bot' ? 'assistant' : 'user',
-          content: m.content
-        }));
+        .map(m => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.content }));
 
-      const result = await query({
-        model: FIXED_MODEL,
-        messages: apiMessages,
-        max_tokens: 500
-      });
-      
-      if (result.error) {
-        throw new Error(result.error.message || 'API Error');
-      }
+      const result = await query({ model: FIXED_MODEL, messages: apiMessages, max_tokens: 500 });
+      if (result.error) throw new Error(result.error.message || 'API Error');
 
       const botReply = result.choices[0].message.content;
-      setMessages(prev => [...prev, { role: 'bot', content: botReply, type: 'text', time: getTime() }]);
+      updateMessages(activeChatId, [...newMessages, { role: 'bot', content: botReply, type: 'text', time: getTime() }]);
     } catch (error) {
       console.error('Text Generation Error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'bot', 
-        content: `${error.message}`, 
-        type: 'error',
-        time: getTime()
-      }]);
+      updateMessages(activeChatId, [...newMessages, { role: 'bot', content: error.message, type: 'error', time: getTime() }]);
     } finally {
       setIsTyping(false);
     }
@@ -117,8 +135,9 @@ function App() {
     }
 
     const userMessage = { role: 'user', content: `🖼️ ${input}`, type: 'text', time: getTime() };
-    setMessages(prev => [...prev, userMessage]);
-    
+    const newMessages = [...messages, userMessage];
+    updateMessages(activeChatId, newMessages);
+
     const prompt = input;
     setInput('');
     setIsTyping(true);
@@ -126,15 +145,13 @@ function App() {
     try {
       const blob = await generateImage(prompt);
       const imageUrl = URL.createObjectURL(blob);
-      
-      setMessages(prev => [...prev, { role: 'bot', content: imageUrl, type: 'image', time: getTime() }]);
+      updateMessages(activeChatId, [...newMessages, { role: 'bot', content: imageUrl, type: 'image', time: getTime() }]);
     } catch (error) {
       console.error('Image Generation Error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'bot', 
-        content: `${error.message}. The model may be loading — please retry in a moment.`, 
-        type: 'error',
-        time: getTime()
+      updateMessages(activeChatId, [...newMessages, {
+        role: 'bot',
+        content: `${error.message}. The model may be loading — please retry in a moment.`,
+        type: 'error', time: getTime()
       }]);
     } finally {
       setIsTyping(false);
@@ -148,13 +165,74 @@ function App() {
     }
   };
 
+  const createNewChat = () => {
+    const newChat = { id: Date.now(), title: 'New Chat', messages: [] };
+    setChatHistory(prev => [newChat, ...prev]);
+    setActiveChatId(newChat.id);
+  };
+
+  const deleteChat = (chatId, e) => {
+    e.stopPropagation();
+    const filtered = chatHistory.filter(c => c.id !== chatId);
+    if (filtered.length === 0) {
+      const newChat = { id: Date.now(), title: 'New Chat', messages: [] };
+      setChatHistory([newChat]);
+      setActiveChatId(newChat.id);
+    } else {
+      setChatHistory(filtered);
+      if (activeChatId === chatId) setActiveChatId(filtered[0].id);
+    }
+  };
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
   return (
-    <div className="app-container">
+    <div className={`app-container ${theme}`} data-theme={theme}>
+      {/* Sidebar */}
+      <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-header">
+          <h2>Chats</h2>
+          <div className="sidebar-actions">
+            <button className="icon-btn" onClick={toggleTheme} title="Toggle theme">
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <button className="icon-btn" onClick={createNewChat} title="New chat">
+              <Plus size={18} />
+            </button>
+            <button className="icon-btn sidebar-close" onClick={() => setSidebarOpen(false)} title="Close sidebar">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="chat-list">
+          {chatHistory.map(chat => (
+            <div
+              key={chat.id}
+              className={`chat-item ${chat.id === activeChatId ? 'active' : ''}`}
+              onClick={() => setActiveChatId(chat.id)}
+            >
+              <MessageSquare size={16} />
+              <span className="chat-item-title">{chat.title}</span>
+              <span className="chat-item-count">{chat.messages.filter(m => m.role === 'user').length}</span>
+              <button className="delete-btn" onClick={(e) => deleteChat(chat.id, e)} title="Delete chat">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Chat */}
       <div className="chat-area">
-        
         {/* Header */}
         <div className="chat-header">
           <div className="header-left">
+            {!sidebarOpen && (
+              <button className="icon-btn" onClick={() => setSidebarOpen(true)} title="Open sidebar">
+                <Menu size={20} />
+              </button>
+            )}
             <div className="header-avatar">
               <Sparkles size={20} />
             </div>
@@ -166,6 +244,9 @@ function App() {
               </span>
             </div>
           </div>
+          <button className="icon-btn theme-toggle-header" onClick={toggleTheme} title="Toggle theme">
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </div>
 
         {/* Messages */}
@@ -233,7 +314,7 @@ function App() {
         {/* Input */}
         <div className="input-area">
           <div className="input-container">
-            <input 
+            <input
               type="text"
               className="chat-input"
               placeholder="Type a message..."
@@ -242,8 +323,7 @@ function App() {
               onKeyDown={handleKeyDown}
               disabled={isTyping}
             />
-            
-            <button 
+            <button
               className="action-btn image-btn"
               onClick={handleGenerateImage}
               disabled={isTyping || !input.trim()}
@@ -251,8 +331,7 @@ function App() {
             >
               Generate Image
             </button>
-            
-            <button 
+            <button
               className="action-btn send-btn"
               onClick={handleSendText}
               disabled={isTyping || !input.trim()}
@@ -262,7 +341,6 @@ function App() {
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
