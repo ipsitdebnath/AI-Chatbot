@@ -317,7 +317,7 @@ function App() {
             <input
               type="text"
               className="chat-input"
-              placeholder="Type a message..."
+              placeholder="Type a message to chat, or describe an image and click Generate Image..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
