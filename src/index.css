@@ -559,15 +559,15 @@ body {
 }
 
 .image-btn {
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, #ec4899, #d946ef);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
 }
 
 .image-btn:hover:not(:disabled) {
-  background: rgba(124, 58, 237, 0.1);
-  color: var(--text);
-  border-color: rgba(124, 58, 237, 0.3);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+  transform: translateY(-1px);
 }
 
 .send-btn {
