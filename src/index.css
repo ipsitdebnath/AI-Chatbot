@@ -33,8 +33,6 @@ body {
 #root {
   width: 100%;
   height: 100%;
-  max-width: 900px;
-  padding: 16px;
   display: flex;
 }
 
@@ -66,15 +64,12 @@ body {
 
 .chat-area {
   flex: 1;
-  border-radius: 20px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
-  border: 1px solid var(--border);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
 }
 
 /* Header */
@@ -411,8 +406,6 @@ body {
 
 /* Responsive */
 @media (max-width: 640px) {
-  #root { padding: 0; }
-  .chat-area { border-radius: 0; }
   .message-wrapper { max-width: 85%; }
   .quick-actions { flex-direction: column; }
 }
