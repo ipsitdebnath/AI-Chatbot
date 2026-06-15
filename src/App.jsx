@@ -89,7 +89,7 @@ function App() {
 
   async function generateImage(prompt) {
     const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
       {
         headers: {
           Authorization: `Bearer ${hfKey}`,
